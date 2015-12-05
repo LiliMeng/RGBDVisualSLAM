@@ -124,15 +124,15 @@ public:
 
         for(int i=0; i<(int)matchedKeypointsIndex1.size(); i++)
         {
-            int x1=keypoints_1[matchedKeypointsIndex1[i]].pt.x;
-            int y1=keypoints_1[matchedKeypointsIndex1[i]].pt.y;
+            int imageX1=keypoints_1[matchedKeypointsIndex1[i]].pt.x;
+            int imageY1=keypoints_1[matchedKeypointsIndex1[i]].pt.y;
             auto depthValue1 = depth_1.at<unsigned short>(keypoints_1[matchedKeypointsIndex1[i]].pt.y, keypoints_1[matchedKeypointsIndex1[i]].pt.x);
             double worldZ1=0;
             if(depthValue1 > min_dis && depthValue1 < max_dis )
             {
                worldZ1=depthValue1/factor;
             }
-           // cout<<"matchedKeypointsIndex1[i] "<<matchedKeypointsIndex1[i]<<"  x1 "<<x1<<" y1  "<<y1<<" worldZ1  "<<worldZ1<<"  depthValue1  "<<depthValue1<<endl;
+           cout<<"matchedKeypointsIndex1[i] "<<matchedKeypointsIndex1[i]<<"  imageX1 "<<imageX1<<" imageY1  "<<imageY1<<" worldZ1  "<<worldZ1<<endl;
 
             double worldX1=(keypoints_1[matchedKeypointsIndex1[i]].pt.x-cx)*worldZ1/fx;
             double worldY1=(keypoints_1[matchedKeypointsIndex1[i]].pt.y-cy)*worldZ1/fy;
@@ -142,23 +142,25 @@ public:
 
         for(int i=0; i<(int)matchedKeypointsIndex2.size(); i++)
         {
-            int x2=keypoints_2[matchedKeypointsIndex2[i]].pt.x;
-            int y2=keypoints_2[matchedKeypointsIndex2[i]].pt.y;
+            int imageX2=keypoints_2[matchedKeypointsIndex2[i]].pt.x;
+            int imageY2=keypoints_2[matchedKeypointsIndex2[i]].pt.y;
             auto depthValue2 = depth_2.at<unsigned short>(keypoints_2[matchedKeypointsIndex2[i]].pt.y, keypoints_2[matchedKeypointsIndex2[i]].pt.x);
+
             double worldZ2=0;
             if(depthValue2> min_dis && depthValue2 < max_dis )
             {
                worldZ2=depthValue2/factor;
             }
-           // cout<<"matchedKeypointsIndex2[i] "<<matchedKeypointsIndex2[i]<<"  x2 "<<x2<<" y2 "<<y2<<" z2 "<<z2<<"  depthValue2  "<<depthValue2<<endl;
+           cout<<"matchedKeypointsIndex2[i] "<<matchedKeypointsIndex2[i]<<"  imageX2 "<<imageX2<<" imageY2 "<<imageY2<<" worldZ2 "<<worldZ2<<endl;
 
-            double worldX2=(keypoints_2[matchedKeypointsIndex2[i]].pt.x-cx)*worldZ2/fx;
-            double worldY2=(keypoints_2[matchedKeypointsIndex2[i]].pt.y-cy)*worldZ2/fy;
+            double cameraX2=(keypoints_2[matchedKeypointsIndex2[i]].pt.x-cx)*worldZ2/fx;
+            double cameraY2=(keypoints_2[matchedKeypointsIndex2[i]].pt.y-cy)*worldZ2/fy;
 
-            cout<<i<<"th matchedKeypointsIndex2  "<<matchedKeypointsIndex2[i]<<"   worldX2  "<<worldX2<<"  worldY2   "<<worldY2<<"  worldZ2  "<<worldZ2<<endl;
+            cout<<i<<"th matchedKeypointsIndex2  "<<matchedKeypointsIndex2[i]<<"   cameraX2  "<<cameraX2<<"  cameraY2   "<<cameraY2<<"  worldZ2  "<<worldZ2<<endl;
         }
 
    }
+
 
     void testing(string& rgb_name1, string& depth_name1, string& rgb_name2, string& depth_name2)
     {
