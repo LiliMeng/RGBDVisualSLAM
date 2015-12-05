@@ -15,9 +15,17 @@
 
 
 
-//#include <pcl/visualization/cloud_viewer.h>
+#include <boost/thread/thread.hpp>
+#include <boost/shared_ptr.hpp>
 
-//#include <pcl/console/parse.h>
+
+#include <pcl/common/common_headers.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/visualization/pcl_visualizer.h>
+#include <pcl/console/parse.h>
+#include <pcl/impl/point_types.hpp>
+#include <pcl/visualization/cloud_viewer.h>
 
 using namespace std;
 using namespace cv;
@@ -105,92 +113,61 @@ public:
         //-- Show detected matches
         imshow( "Good Matches", img_matches);
 
+        vector<int> matchedKeypointsIndex1, matchedKeypointsIndex2;
+
         for( int i = 0; i < (int)good_matches.size(); i++ )
         {
-            printf( "-- Good Match [%d] Keypoint 1: %d  -- Keypoint 2: %d  \n", i, good_matches[i].queryIdx, good_matches[i].trainIdx ); }
-
-            //waitKey(0);
+            printf( "-- Good Match [%d] Keypoint 1: %d  -- Keypoint 2: %d  \n", i, good_matches[i].queryIdx, good_matches[i].trainIdx );
+            matchedKeypointsIndex1.push_back(good_matches[i].queryIdx);
+            matchedKeypointsIndex2.push_back(good_matches[i].trainIdx);
         }
 
-
-    void generate3DFeatures()
-    {
-        for (int i=0; i<keypoints_1.size(); i++)
+        for(int i=0; i<(int)matchedKeypointsIndex1.size(); i++)
         {
-            //assert(depth_1.type() == CV_8U);
-            printf("depth type is %d\n", depth_1.type());
-            auto depthValue1 = depth_1.at<unsigned short>(keypoints_1[i].pt.y, keypoints_1[i].pt.x);
-            cout<<"depthValue1 "<<depthValue1<<endl;
+            int x1=keypoints_1[matchedKeypointsIndex1[i]].pt.x;
+            int y1=keypoints_1[matchedKeypointsIndex1[i]].pt.y;
+            auto depthValue1 = depth_1.at<unsigned short>(keypoints_1[matchedKeypointsIndex1[i]].pt.y, keypoints_1[matchedKeypointsIndex1[i]].pt.x);
+            double worldZ1=0;
             if(depthValue1 > min_dis && depthValue1 < max_dis )
             {
-                Z1 = depthValue1/factor;
-                X1 = (keypoints_1[i].pt.x-cx)*Z1/fx;
-                Y1 = (keypoints_1[i].pt.y-cy)*Z1/fy;
-
-                cout<<"X1"<<X1<<endl;
-                cout<<"Y1"<<Y1<<endl;
-                cout<<"Z1"<<Z1<<endl;
-                feature_point3D_1.push_back(Point3d(X1,Y1,Z1));
+               worldZ1=depthValue1/factor;
             }
+           // cout<<"matchedKeypointsIndex1[i] "<<matchedKeypointsIndex1[i]<<"  x1 "<<x1<<" y1  "<<y1<<" worldZ1  "<<worldZ1<<"  depthValue1  "<<depthValue1<<endl;
+
+            double worldX1=(keypoints_1[matchedKeypointsIndex1[i]].pt.x-cx)*worldZ1/fx;
+            double worldY1=(keypoints_1[matchedKeypointsIndex1[i]].pt.y-cy)*worldZ1/fy;
+
+            cout<<i<<"th matchedKeypointsIndex1  "<<matchedKeypointsIndex1[i]<<"   worldX1  "<<worldX1<<"  worldY1   "<<worldY1<<"  worldZ1   "<<worldZ1<<endl;
         }
 
-        for (int i=0; i<keypoints_2.size(); i++)
+        for(int i=0; i<(int)matchedKeypointsIndex2.size(); i++)
         {
-            auto depthValue2 = depth_2.at<unsigned short>(keypoints_2[i].pt.y, keypoints_2[i].pt.x);
-
-            if(depthValue2 > min_dis && depthValue2 < max_dis )
+            int x2=keypoints_2[matchedKeypointsIndex2[i]].pt.x;
+            int y2=keypoints_2[matchedKeypointsIndex2[i]].pt.y;
+            auto depthValue2 = depth_2.at<unsigned short>(keypoints_2[matchedKeypointsIndex2[i]].pt.y, keypoints_2[matchedKeypointsIndex2[i]].pt.x);
+            double worldZ2=0;
+            if(depthValue2> min_dis && depthValue2 < max_dis )
             {
-                Z2 = depthValue2/factor;
-                X2 = (keypoints_2[i].pt.x-cx)*Z2/fx;
-                Y2 = (keypoints_2[i].pt.y-cy)*Z2/fy;
-                feature_point3D_2.push_back(Point3d(X2,Y2,Z2));
-                cout<<"X2"<<X2<<endl;
-                cout<<"Y2"<<Y2<<endl;
-                cout<<"Z2"<<Z2<<endl;
+               worldZ2=depthValue2/factor;
             }
+           // cout<<"matchedKeypointsIndex2[i] "<<matchedKeypointsIndex2[i]<<"  x2 "<<x2<<" y2 "<<y2<<" z2 "<<z2<<"  depthValue2  "<<depthValue2<<endl;
+
+            double worldX2=(keypoints_2[matchedKeypointsIndex2[i]].pt.x-cx)*worldZ2/fx;
+            double worldY2=(keypoints_2[matchedKeypointsIndex2[i]].pt.y-cy)*worldZ2/fy;
+
+            cout<<i<<"th matchedKeypointsIndex2  "<<matchedKeypointsIndex2[i]<<"   worldX2  "<<worldX2<<"  worldY2   "<<worldY2<<"  worldZ2  "<<worldZ2<<endl;
         }
-     }
 
-     /*
-     void draw3DKeypoints()
-     {
-
-        pcl::visualization::CloudViewer viewer("Cloud Viewer");
-      //Draw 3D keypoitns over the point cloud
-        pointCloudKeypoints3D_2.reset(new pcl::PointCloud<pcl::PointXYZRGBA>());
-        for(int i=0; i<keypoints_2.size(); i++)
-        {
-            int y=keypoints_2[i].pt.x;
-            int x=keypoints_2[i].pt.y;
-            int z=depth_2.at<unsigned short>(keypoints_2[i].pt.y, keypoints_2[i].pt.x);
-
-            for(int rIndex=-2;rIndex<=2;rIndex++)
-            {
-                for(int cIndex=-2;cIndex<=2;cIndex++)
-                {
-                    int pointIndex=(x+cIndex)*640+(y+rIndex);
-                    if(pointIndex>=0 && pointIndex<640*480)
-                    {
-                        pointCloudKeypoints3D_2->points[pointIndex].r=0;
-                        pointCloudKeypoints3D_2->points[pointIndex].g=255;
-                        pointCloudKeypoints3D_2->points[pointIndex].b=0;
-                    }
-                }
-            }
-        }
-        viewer.showCloud(pointCloudKeypoints3D_2);
-     }
-     */
+   }
 
     void testing(string& rgb_name1, string& depth_name1, string& rgb_name2, string& depth_name2)
     {
         readRGBDFromFile(rgb_name1, depth_name1, rgb_name2, depth_name2);
         featureMatching();
-        generate3DFeatures();
-       // draw3DKeypoints();
+
     }
 
-     Mat img_1, img_2;
+    Mat img_1, img_2;
 
     Mat depth_1, depth_2;
 
@@ -216,7 +193,7 @@ public:
     double factor = 5000;
 
 
-    //pcl::PointCloud<pcl::PointXYZRGBA>::Ptr pointCloudKeypoints3D_1, pointCloudKeypoints3D_2;
+
 
 
 
@@ -237,10 +214,10 @@ int main()
 {
     readData r;
 
-    string rgb1="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/rgb1.png";
-    string depth1="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/depth1.png";
-    string rgb2="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/rgb2.png";
-    string depth2="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/depth2.png";
+    string rgb1="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/rgb3.png";
+    string depth1="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/depth3.png";
+    string rgb2="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/rgb4.png";
+    string depth2="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/depth4.png";
 
     r.testing(rgb1,depth1,rgb2,depth2);
 
