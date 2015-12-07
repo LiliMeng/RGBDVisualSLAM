@@ -27,6 +27,11 @@
 #include <pcl/impl/point_types.hpp>
 #include <pcl/visualization/cloud_viewer.h>
 
+#include <Eigen/Geometry>
+
+
+
+
 using namespace std;
 using namespace cv;
 
@@ -115,48 +120,113 @@ public:
 
         vector<int> matchedKeypointsIndex1, matchedKeypointsIndex2;
 
+        vector<Point2f> imgpts1, imgpts2;
+
         for( int i = 0; i < (int)good_matches.size(); i++ )
         {
             printf( "-- Good Match [%d] Keypoint 1: %d  -- Keypoint 2: %d  \n", i, good_matches[i].queryIdx, good_matches[i].trainIdx );
             matchedKeypointsIndex1.push_back(good_matches[i].queryIdx);
             matchedKeypointsIndex2.push_back(good_matches[i].trainIdx);
+            imgpts1.push_back(keypoints_1[good_matches[i].queryIdx].pt);
+            imgpts2.push_back(keypoints_2[good_matches[i].trainIdx].pt);
         }
+
+        //Find the fundamental matrix
+
+        Mat F = findFundamentalMat(imgpts1, imgpts2, FM_RANSAC, 3, 0.99);
+        cout<<"Testing F" <<endl<<Mat(F)<<endl;
+        //Essential matrix: compute then extract cameras [R|t]
+        Mat K=cv::Mat(3,3,CV_64F);
+        K.at<double>(0,0)=fx;
+        K.at<double>(1,1)=fy;
+        K.at<double>(2,2)=1;
+        K.at<double>(0,2)=cx;
+        K.at<double>(1,2)=cy;
+        K.at<double>(0,1)=0;
+        K.at<double>(1,0)=0;
+        K.at<double>(2,0)=0;
+        K.at<double>(2,1)=0;
+        cout<<"Testing K" <<endl<<Mat(K)<<endl;
+
+
+
+        Mat_<double> E=K.t()*F*K;
+
+        cout<<"Testing E" <<endl<<Mat(E)<<endl;
+
+        //decompose E to P' Hz(9.19)
+        SVD svd(E,SVD::MODIFY_A);
+        Mat svd_u = svd.u;
+        Mat svd_vt = svd.vt;
+        Mat svd_w = svd.w;
+
+        cout<<"Testing svd" <<endl<<Mat(svd_u)<<endl;
+
+
+        Matx33d W(0,-1,0,
+        1,0,0,
+        0,0,1);  //HZ 9.13
+
+        Mat_<double> R = svd_u*Mat(W)*svd_vt;  //HZ 9.19
+        Mat_<double> t = svd_u.col(2);
+        Matx34d P1=Matx34d( R(0,0), R(0,1), R(0,2), t(0),
+                    R(1,0), R(1,1), R(1,2), t(1),
+                    R(2,0), R(2,1), R(2,2), t(2));
+
+
+       cout << "Testing P1 " << endl << Mat(P1) << endl;
+
+       ofstream fout1("feature_points.csv");
 
         for(int i=0; i<(int)matchedKeypointsIndex1.size(); i++)
         {
             int imageX1=keypoints_1[matchedKeypointsIndex1[i]].pt.x;
             int imageY1=keypoints_1[matchedKeypointsIndex1[i]].pt.y;
             auto depthValue1 = depth_1.at<unsigned short>(keypoints_1[matchedKeypointsIndex1[i]].pt.y, keypoints_1[matchedKeypointsIndex1[i]].pt.x);
-            double worldZ1=0;
-            if(depthValue1 > min_dis && depthValue1 < max_dis )
-            {
-               worldZ1=depthValue1/factor;
-            }
-           cout<<"matchedKeypointsIndex1[i] "<<matchedKeypointsIndex1[i]<<"  imageX1 "<<imageX1<<" imageY1  "<<imageY1<<" worldZ1  "<<worldZ1<<endl;
 
-            double worldX1=(keypoints_1[matchedKeypointsIndex1[i]].pt.x-cx)*worldZ1/fx;
-            double worldY1=(keypoints_1[matchedKeypointsIndex1[i]].pt.y-cy)*worldZ1/fy;
+           cout<<"matchedKeypointsIndex1[i] "<<matchedKeypointsIndex1[i]<<"  imageX1 "<<imageX1<<" imageY1  "<<imageY1<<endl;
+           fout1<<i<<" "<<matchedKeypointsIndex1[i]<<" "<<imageX1<<" "<<imageY1<<endl;
 
-            cout<<i<<"th matchedKeypointsIndex1  "<<matchedKeypointsIndex1[i]<<"   worldX1  "<<worldX1<<"  worldY1   "<<worldY1<<"  worldZ1   "<<worldZ1<<endl;
         }
 
         for(int i=0; i<(int)matchedKeypointsIndex2.size(); i++)
         {
             int imageX2=keypoints_2[matchedKeypointsIndex2[i]].pt.x;
             int imageY2=keypoints_2[matchedKeypointsIndex2[i]].pt.y;
-            auto depthValue2 = depth_2.at<unsigned short>(keypoints_2[matchedKeypointsIndex2[i]].pt.y, keypoints_2[matchedKeypointsIndex2[i]].pt.x);
 
-            double worldZ2=0;
+           cout<<"matchedKeypointsIndex2[i] "<<matchedKeypointsIndex2[i]<<"  imageX2 "<<imageX2<<" imageY2 "<<imageY2<<endl;
+           fout1<<i<<" "<<matchedKeypointsIndex2[i]<<" "<<imageX2<<" "<<imageY2<<endl;
+          }
+
+         for(int i=0; i<(int)matchedKeypointsIndex1.size(); i++)
+         {
+            auto depthValue1 = depth_1.at<unsigned short>(keypoints_1[matchedKeypointsIndex1[i]].pt.y, keypoints_1[matchedKeypointsIndex1[i]].pt.x);
+            double worldZ1=0;
+            if(depthValue1 > min_dis && depthValue1 < max_dis )
+            {
+               worldZ1=depthValue1/factor;
+            }
+
+            double worldX1=(keypoints_1[matchedKeypointsIndex1[i]].pt.x-cx)*worldZ1/fx;
+            double worldY1=(keypoints_1[matchedKeypointsIndex1[i]].pt.y-cy)*worldZ1/fy;
+
+            cout<<i<<"th matchedKeypointsIndex1  "<<matchedKeypointsIndex1[i]<<"   worldX1  "<<worldX1<<"  worldY1   "<<worldY1<<"  worldZ1   "<<worldZ1<<endl;
+            fout1<<i<<" "<<matchedKeypointsIndex1[i]<<" "<<worldX1<<" "<<worldY1<<" "<<worldZ1<<endl;
+        }
+
+        for(int i=0; i<(int)matchedKeypointsIndex2.size(); i++)
+        {
+            auto depthValue2 = depth_2.at<unsigned short>(keypoints_2[matchedKeypointsIndex2[i]].pt.y, keypoints_2[matchedKeypointsIndex2[i]].pt.x);
+            double cameraZ2=0;
             if(depthValue2> min_dis && depthValue2 < max_dis )
             {
-               worldZ2=depthValue2/factor;
+               cameraZ2=depthValue2/factor;
             }
-           cout<<"matchedKeypointsIndex2[i] "<<matchedKeypointsIndex2[i]<<"  imageX2 "<<imageX2<<" imageY2 "<<imageY2<<" worldZ2 "<<worldZ2<<endl;
+            double cameraX2=(keypoints_2[matchedKeypointsIndex2[i]].pt.x-cx)*cameraZ2/fx;
+            double cameraY2=(keypoints_2[matchedKeypointsIndex2[i]].pt.y-cy)*cameraZ2/fy;
 
-            double cameraX2=(keypoints_2[matchedKeypointsIndex2[i]].pt.x-cx)*worldZ2/fx;
-            double cameraY2=(keypoints_2[matchedKeypointsIndex2[i]].pt.y-cy)*worldZ2/fy;
-
-            cout<<i<<"th matchedKeypointsIndex2  "<<matchedKeypointsIndex2[i]<<"   cameraX2  "<<cameraX2<<"  cameraY2   "<<cameraY2<<"  worldZ2  "<<worldZ2<<endl;
+            cout<<i<<"th matchedKeypointsIndex2  "<<matchedKeypointsIndex2[i]<<"   cameraX2  "<<cameraX2<<"  cameraY2   "<<cameraY2<<"  cameraZ2  "<<cameraZ2<<endl;
+            fout1<<i<<" "<<matchedKeypointsIndex2[i]<<" "<<cameraX2<<" "<<cameraY2<<" "<<cameraZ2<<endl;
         }
 
    }
@@ -174,7 +244,7 @@ public:
     Mat depth_1, depth_2;
 
 
-    vector<Point2f> points2d1, points2d2;
+
     vector<KeyPoint> keypoints_1, keypoints_2;
 
     vector<Point3d>  feature_point3D_1, feature_point3D_2;
