@@ -208,29 +208,6 @@ public:
 
         }
 
-       /*
-       Mat Khomogeneous(3,4,CV_64F);
-       Khomogeneous.at<double>(0,0)=fx;
-       Khomogeneous.at<double>(1,1)=fy;
-       Khomogeneous.at<double>(2,2)=1;
-       Khomogeneous.at<double>(0,2)=cx;
-       Khomogeneous.at<double>(1,2)=cy;
-       Khomogeneous.at<double>(0,1)=0;
-       Khomogeneous.at<double>(1,0)=0;
-       Khomogeneous.at<double>(2,0)=0;
-       Khomogeneous.at<double>(2,1)=0;
-       Khomogeneous.at<double>(0,3)=0;
-       Khomogeneous.at<double>(1,3)=0;
-       Khomogeneous.at<double>(2,3)=0;
-
-
-       //homogeneous of transformation
-       Matx44d P1homogeneous=Matx44d( R(0,0), R(0,1), R(0,2), t(0),
-                    R(1,0), R(1,1), R(1,2), t(1),
-                    R(2,0), R(2,1), R(2,2), t(2),
-                    0,0,0,1);
-        */
-
        cv::Mat rvec(3,1,cv::DataType<double>::type);
        cv::Mat rotationMatrix(3,3,cv::DataType<double>::type);
 
@@ -277,9 +254,6 @@ public:
         double meanPerPointError=std::sqrt(totalErr/n);    //calculate the arithmmatical mean
         cout<<"meanPerPointError: "<<meanPerPointError<<endl;
 
-
-
-
        cv::Mat rotAndtransVec(6,1,cv::DataType<double>::type);
 
        rotAndtransVec.at<double>(0)=rvec.at<double>(0);
@@ -290,6 +264,8 @@ public:
        rotAndtransVec.at<double>(5)=t.at<double>(2);
 
        cout<<"Testing rotAndtransVec "<<Mat(rotAndtransVec)<<endl;
+
+
 
        /*
        float opts[LM_OPTS_SZ], info[LM_INFO_SZ];
@@ -302,15 +278,17 @@ public:
     // par_vec stores a minimal representation of the transformation (i.e. translation + rotation) to be used in the levmar rountine.
     // This allows us to avoid the ||q||^2 = 1 constraint in the optimization and hence deal with it as an unconstrained optimization
     // problem.
-    //float par_vec[6];
-    //rot_vec_norm = 2*acos(p[3])/sqrtf(1-p[3]*p[3]);
-   // par_vec[0] = p[0]; par_vec[1] = p[1]; par_vec[2] = p[2];
-   // par_vec[3] = 0;
-   // par_vec[4] = 0;
-   // par_vec[5] = 0;
+     double par_vec[6];
+     par_vec[0]=rvec.at<double>(0);
+     par_vec[1]=rvec.at<double>(1);
+     par_vec[2]=rvec.at<double>(2);
+     par_vec[3]=t.at<double>(0);
+     par_vec[4]=t.at<double>(1);
+     par_vec[5]=t.at<double>(2);
 
 
-  //  int slevmar_return = slevmar_dif(lm_projectPoints,   /*double *p,   I/O: initial parameter estimates. On output contains the estimated solution */
+
+  // int slevmar_return = slevmar_dif(lm_projectPoints,   /*double *p,   I/O: initial parameter estimates. On output contains the estimated solution */
  //                                    par_vec,  /*double *x,     I: measurement vector. NULL implies a zero vector */
   //                                   hx,   /*double *x,          I: measurement vector. NULL implies a zero vector */
 //                                     6,    /* I: parameter vector dimension (i.e. #unknowns), here is rotation angles and translation*/
@@ -346,17 +324,7 @@ public:
                                                                                     /* Set to NULL if not needed
                                                                                     */
 
-        //reproject the 3D points into the second image plane using reprojection  u=K[R|T]P
-        // the transformation from world coordinate to image coordinate is given by k*[R|T]X
-        /*
-       vector<double> reproj_error;
-        for(unsigned int i=0; i< (int)good_matches.size(); i++)
-        {
-            vector<Point2d> estimatedImage2.resize(good_matches.size());
-
-        }*/
-        /*
-
+     /*
        ofstream fout1("feature_points.csv");
 
         for(int i=0; i<(int)matchedKeypointsIndex1.size(); i++)
@@ -418,7 +386,6 @@ public:
     {
         readRGBDFromFile(rgb_name1, depth_name1, rgb_name2, depth_name2);
         featureMatching();
-
     }
 
     Mat img_1, img_2;
@@ -444,8 +411,6 @@ public:
 
     double X1, Y1, Z1, X2, Y2, Z2;
     double factor = 5000;
-
-
 
 
 
