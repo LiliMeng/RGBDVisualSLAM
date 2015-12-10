@@ -4,7 +4,6 @@
 #include <vector>
 #include <string>
 
-
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include "opencv2/features2d/features2d.hpp"
@@ -13,11 +12,8 @@
 #include "opencv2/nonfree/features2d.hpp"
 #include "opencv2/calib3d/calib3d.hpp"
 
-
-
 #include <boost/thread/thread.hpp>
 #include <boost/shared_ptr.hpp>
-
 
 #include <pcl/common/common_headers.h>
 #include <pcl/features/normal_3d.h>
@@ -51,11 +47,30 @@ public:
          assert(depth_1.type()==CV_16U);
          assert(depth_2.type()==CV_16U);
 
-
      //    cv::imshow("depth 1", depth_1);
      //    cv::waitKey(0);
     }
 
+
+     void lm_projectPoints(float *p, float *hx, int m, int n, void* adata)
+     {
+
+        float rx=p[0];
+        float ry=p[1];
+        float rz=p[2];
+        float tx=p[3];
+        float ty=p[4];
+        float tz=p[5];
+
+        int feature_index=0;
+        for(int i=0; i<numMatches;++i)
+        {
+            hx[feature_index*3]= (cx*tz + fx*tx + feature_world3D_1[i].y*(cx*rx - fx*rz) -  feature_world3D_1[i].x*cx*ry + feature_world3D_1[i].z*fx*ry)/(tz - feature_world3D_1[i].x*ry +  feature_world3D_1[i].y*rx);
+            hx[feature_index*3 + 1]= (cy*tz + fy*ty - feature_world3D_1[i].x*(cy*ry - fy*rz) +  feature_world3D_1[i].y*cy*rx -  feature_world3D_1[i].z*fy*rx)/(tz - feature_world3D_1[i].x*ry +  feature_world3D_1[i].y*rx);
+            hx[feature_index*3 + 2] = 0;
+            ++feature_index;
+        }
+     }
 
     void featureMatching()
     {
@@ -71,7 +86,6 @@ public:
 
         //-- Step 2: Calculate descriptors (feature vectors)
         SurfDescriptorExtractor extractor;
-
 
         Mat descriptors_1, descriptors_2;
 
@@ -186,8 +200,6 @@ public:
 
        cout << "Testing P1 " << endl << Mat(P1) << endl;
 
-        vector<Point3d>  feature_world3D_1;
-
        // project the matched 2D keypoint in image1 to the 3D points in world coordinate(the camera coordinate equals to the world coordinate in this case) using back-projection
         for(int i=0; i<(int)matchedKeypointsIndex1.size(); i++)
          {
@@ -205,10 +217,10 @@ public:
 
             //store point cloud
             feature_world3D_1.push_back(Point3d(worldX1,worldY1,worldZ1));
-
         }
 
        cv::Mat rvec(3,1,cv::DataType<double>::type);
+
        cv::Mat rotationMatrix(3,3,cv::DataType<double>::type);
 
        rotationMatrix.at<double>(0,0)=R(0,0);
@@ -245,13 +257,11 @@ public:
             err = norm(Mat(imgpts2[i]), Mat(estimatedProjectedPoints2[i]), CV_L2);              // reprojection error for measured points and estimatedReprojected points in image2
 
             cout<<"err  "<<err<<endl;
-
             totalErr  += err*err;                // sum it up
-
         }
 
-        int n = (int)good_matches.size();
-        double meanPerPointError=std::sqrt(totalErr/n);    //calculate the arithmmatical mean
+        numMatches = (int)good_matches.size();
+        double meanPerPointError=std::sqrt(totalErr/numMatches);    //calculate the arithmmatical mean
         cout<<"meanPerPointError: "<<meanPerPointError<<endl;
 
        cv::Mat rotAndtransVec(6,1,cv::DataType<double>::type);
@@ -265,66 +275,56 @@ public:
 
        cout<<"Testing rotAndtransVec "<<Mat(rotAndtransVec)<<endl;
 
+        float opts[LM_OPTS_SZ], info[LM_INFO_SZ];
+        opts[0]=LM_INIT_MU; opts[1]=1E-15; opts[2]=1E-15; opts[3]=1E-20; opts[4]= LM_DIFF_DELTA;
+
+        int m=6, n=numMatches*3;
+
+        // Allocate working memory outside levmar for efficiency
+        float * work = new float[(LM_DIF_WORKSZ(6, n))];
 
 
-       /*
-       float opts[LM_OPTS_SZ], info[LM_INFO_SZ];
-	   opts[0]=LM_INIT_MU; opts[1]=1E-15; opts[2]=1E-15; opts[3]=1E-20;
-	   opts[4]= LM_DIFF_DELTA;*/
+        // par_vec stores a minimal representation of the transformation (i.e. translation + rotation) to be used in the levmar rountine.
+        // This allows us to avoid the ||q||^2 = 1 constraint in the optimization and hence deal with it as an unconstrained optimization
+        // problem.
+        float par_vec[6];
+        par_vec[0]=rvec.at<float>(0);
+        par_vec[1]=rvec.at<float>(1);
+        par_vec[2]=rvec.at<float>(2);
+        par_vec[3]=t.at<float>(0);
+        par_vec[4]=t.at<float>(1);
+        par_vec[5]=t.at<float>(2);
 
-       // Allocate working memory outside levmar for efficiency
-     //  float * work = new float[(LM_DIF_WORKSZ(6, max_inlier_count*3))];
+        float rx=par_vec[0];
+        float ry=par_vec[1];
+        float rz=par_vec[2];
+        float tx=par_vec[3];
+        float ty=par_vec[4];
+        float tz=par_vec[5];
 
-    // par_vec stores a minimal representation of the transformation (i.e. translation + rotation) to be used in the levmar rountine.
-    // This allows us to avoid the ||q||^2 = 1 constraint in the optimization and hence deal with it as an unconstrained optimization
-    // problem.
-     double par_vec[6];
-     par_vec[0]=rvec.at<double>(0);
-     par_vec[1]=rvec.at<double>(1);
-     par_vec[2]=rvec.at<double>(2);
-     par_vec[3]=t.at<double>(0);
-     par_vec[4]=t.at<double>(1);
-     par_vec[5]=t.at<double>(2);
+        float *hx = new float[n];
+
+        float *covar;
+
+        covar=work+LM_DIF_WORKSZ(m, n);
+
+        int feature_index=0;
+
+        for(int i=0; i<numMatches;++i)
+        {
+            hx[feature_index*3]= (cx*tz + fx*tx + feature_world3D_1[i].y*(cx*rx - fx*rz) - feature_world3D_1[i].x*cx*ry + feature_world3D_1[i].z*fx*ry)/(tz - feature_world3D_1[i].x*ry +  feature_world3D_1[i].y*rx);
+            hx[feature_index*3 + 1]= (cy*tz + fy*ty - feature_world3D_1[i].x*(cy*ry - fy*rz) + feature_world3D_1[i].y*cy*rx -  feature_world3D_1[i].z*fy*rx)/(tz - feature_world3D_1[i].x*ry +  feature_world3D_1[i].y*rx);
+            hx[feature_index*3 + 2] = 0;
+            ++feature_index;
+        }
+
+        int slevmar_return = slevmar_der(lm_projectPoints, par_vec, hx, m, n, 100, opts, info, work, covar, NULL);  // no Jacobian, caller allocates work memory, covariance estimated
+
+        if (slevmar_return == LM_ERROR)
+		std::cout << "LEVMAR Error Encountered!" << std::endl;
 
 
-
-  // int slevmar_return = slevmar_dif(lm_projectPoints,   /*double *p,   I/O: initial parameter estimates. On output contains the estimated solution */
- //                                    par_vec,  /*double *x,     I: measurement vector. NULL implies a zero vector */
-  //                                   hx,   /*double *x,          I: measurement vector. NULL implies a zero vector */
-//                                     6,    /* I: parameter vector dimension (i.e. #unknowns), here is rotation angles and translation*/
- //                                    max_inlier_count * 3,   /* int n,  I: measurement vector dimension */
- //                                    100,   /*int itmax,       I: maximum number of iterations */
-   //                                  opts,    /* double opts[5],  I: opts[0-4] = minim. options [\tau, \epsilon1, \epsilon2, \epsilon3, \delta]. Respectively the
-                                                /* scale factor for initial \mu, stopping thresholds for ||J^T e||_inf, ||Dp||_2 and ||e||_2 and the
-                                  -0.946237410033647              * step used in difference approximation to the Jacobian. If \delta<0, the Jacobian is approximated
-                                                * with central differences which are more accurate (but slower!) compared to the forward differences
-                                                * employed by default. Set to NULL for defaults to be used. */
-
-                               //info,    /* double info[LM_INFO_SZ], O: information regarding the minimization. Set to NULL if don't care
-                                               /* info[0]= ||e||_2 at initial p.
-                                               * info[1-4]=[ ||e||_2, ||J^T e||_inf,  ||Dp||_2, \mu/max[J^T J]_ii ], all computed at estimated p.
-                                               * info[5]= # iterations,
-                                               * info[6]=reason for terminating: 1 - stopped by small gradient J^T e
-                                                *                                 2 - stopped by small Dp
-                                                *                                 3 - stopped by itmax
-                                                *                                 4 - singular matrix. Restart from current p with increased \mu
-                     *                                 5 - no further error reduction is possible. Restart with increased mu
-                     *                                 6 - stopped by small ||e||_2
-                     *                                 7 - stopped by invalid (i.e. NaN or Inf) "func" values; a user error
-                     * info[7]= # function evaluations
-                     * info[8]= # Jacobian evaluations
-                     * info[9]= # linear systems solved, i.e. # attempts for reducing error
-                     */
-                                    // work,  /*double *work,      I: working memory, allocated internally if NULL. If !=NULL, it is assumed to point to
-                                             /* a memory chunk at least LM_DIF_WORKSZ(m, n)*sizeof(double) bytes long*/
-                                     //covariance,  /*double *covar,     O: Covariance matrix corresponding to LS solution; Assumed to point to a mxm matrix.
-                                                   /* Set to NULL if not needed.*/
-
-                                    // reinterpret_cast<void *>(&projectPoints_t));  /*void *adata   I: pointer to possibly needed additional data, passed uninterpreted to func.
-                                                                                    /* Set to NULL if not needed
-                                                                                    */
-
-     /*
+   /*
        ofstream fout1("feature_points.csv");
 
         for(int i=0; i<(int)matchedKeypointsIndex1.size(); i++)
@@ -339,7 +339,7 @@ public:
         }
 
         for(int i=0; i<(int)matchedKeypointsIndex2.size(); i++)
-        {
+        {}
             int imageX2=keypoints_2[matchedKeypointsIndex2[i]].pt.x;
             int imageY2=keypoints_2[matchedKeypointsIndex2[i]].pt.y;
 
@@ -354,7 +354,7 @@ public:
             if(depthValue1 > min_dis && depthValue1 < max_dis )
             {
                worldZ1=depthValue1/factor;
-            }
+            }vector<Point3d>  feature_world3D_1;
 
             double worldX1=(keypoints_1[matchedKeypointsIndex1[i]].pt.x-cx)*worldZ1/fx;
             double worldY1=(keypoints_1[matchedKeypointsIndex1[i]].pt.y-cy)*worldZ1/fy;
@@ -380,8 +380,6 @@ public:
       */
    }
 
-
-
     void testing(string& rgb_name1, string& depth_name1, string& rgb_name2, string& depth_name2)
     {
         readRGBDFromFile(rgb_name1, depth_name1, rgb_name2, depth_name2);
@@ -393,10 +391,10 @@ public:
     Mat depth_1, depth_2;
 
 
-
+    int numMatches;
     vector<KeyPoint> keypoints_1, keypoints_2;
 
-
+    vector<Point3d>  feature_world3D_1;
     vector< DMatch > matches;
 
         //camera parameters
