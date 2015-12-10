@@ -32,6 +32,52 @@
 using namespace std;
 using namespace cv;
 
+typedef struct lm_projectPoints_data_s
+{
+    std::vector<cv::Point3d> world3DPoints;
+
+} lm_projectPoints_data_t;
+
+
+ void lm_projectPoints(float *p, float *hx, int m, int n, void* adata)
+ {
+
+    lm_projectPoints_data_t *projectPoints_data = reinterpret_cast< lm_projectPoints_data_t * >(adata);
+
+        //camera parameters
+    double fx = 525.0; //focal length x
+    double fy = 525.0; //focal le
+
+    double cx = 319.5; //optical centre x
+    double cy = 239.5; //optical centre y
+
+    float rx=p[0];
+    float ry=p[1];
+    float rz=p[2];
+    float tx=p[3];
+    float ty=p[4];
+    float tz=p[5];
+
+    int n_features = projectPoints_data->world3DPoints.size();
+    int feature_index=0;
+
+    for(int i=0; i<n_features; ++i)
+    {
+        float Xw=projectPoints_data->world3DPoints[i].x;
+        float Yw=projectPoints_data->world3DPoints[i].y;
+        float Zw=projectPoints_data->world3DPoints[i].z;
+
+        hx[feature_index*3]= (cx*tz + fx*tx + Yw*(cx*rx - fx*rz) - Xw*cx*ry + Zw*fx*ry)/(tz - Xw*ry +  Yw*rx);
+        hx[feature_index*3 + 1]= (cy*tz + fy*ty - Xw*(cy*ry - fy*rz) + Yw*cy*rx - Zw*fy*rx)/(tz - Xw*ry + Yw*rx);
+        hx[feature_index*3 + 2] = 0;
+        ++feature_index;
+    }
+
+    return;
+}
+
+
+
 class readData{
 
 public:
@@ -50,27 +96,6 @@ public:
      //    cv::imshow("depth 1", depth_1);
      //    cv::waitKey(0);
     }
-
-
-     void lm_projectPoints(float *p, float *hx, int m, int n, void* adata)
-     {
-
-        float rx=p[0];
-        float ry=p[1];
-        float rz=p[2];
-        float tx=p[3];
-        float ty=p[4];
-        float tz=p[5];
-
-        int feature_index=0;
-        for(int i=0; i<numMatches;++i)
-        {
-            hx[feature_index*3]= (cx*tz + fx*tx + feature_world3D_1[i].y*(cx*rx - fx*rz) -  feature_world3D_1[i].x*cx*ry + feature_world3D_1[i].z*fx*ry)/(tz - feature_world3D_1[i].x*ry +  feature_world3D_1[i].y*rx);
-            hx[feature_index*3 + 1]= (cy*tz + fy*ty - feature_world3D_1[i].x*(cy*ry - fy*rz) +  feature_world3D_1[i].y*cy*rx -  feature_world3D_1[i].z*fy*rx)/(tz - feature_world3D_1[i].x*ry +  feature_world3D_1[i].y*rx);
-            hx[feature_index*3 + 2] = 0;
-            ++feature_index;
-        }
-     }
 
     void featureMatching()
     {
@@ -120,7 +145,7 @@ public:
 
         for( int i = 0; i < descriptors_1.rows; i++ )
         {
-          if( matches[i].distance <= max(3*min_dist, 0.03) )
+          if( matches[i].distance <= max(2*min_dist, 0.02) )
             { good_matches.push_back( matches[i]); }
         }
 
@@ -146,6 +171,7 @@ public:
             imgpts2.push_back(keypoints_2[good_matches[i].trainIdx].pt);
         }
 
+        int numMatches=(int)good_matches.size();
         //Find the fundamental matrix
 
         Mat F = findFundamentalMat(imgpts1, imgpts2, FM_RANSAC, 3, 0.99);
@@ -200,6 +226,8 @@ public:
 
        cout << "Testing P1 " << endl << Mat(P1) << endl;
 
+
+        vector<Point3d>  feature_world3D_1;
        // project the matched 2D keypoint in image1 to the 3D points in world coordinate(the camera coordinate equals to the world coordinate in this case) using back-projection
         for(int i=0; i<(int)matchedKeypointsIndex1.size(); i++)
          {
@@ -242,7 +270,7 @@ public:
         distCoeffs.at<double>(1) = 0;
         distCoeffs.at<double>(2) = 0;
         distCoeffs.at<double>(3) = 0;
-
+        /*calculate the estimatedProjectedPoints2 through feature_world3D_1, rvec, t, K, distCoeffs
        std::vector<cv::Point2d> estimatedProjectedPoints2;
        cv::projectPoints(feature_world3D_1, rvec, t, K, distCoeffs, estimatedProjectedPoints2);
 
@@ -260,10 +288,10 @@ public:
             totalErr  += err*err;                // sum it up
         }
 
-        numMatches = (int)good_matches.size();
+
         double meanPerPointError=std::sqrt(totalErr/numMatches);    //calculate the arithmmatical mean
         cout<<"meanPerPointError: "<<meanPerPointError<<endl;
-
+　　　　　　　　*/
        cv::Mat rotAndtransVec(6,1,cv::DataType<double>::type);
 
        rotAndtransVec.at<double>(0)=rvec.at<double>(0);
@@ -275,54 +303,56 @@ public:
 
        cout<<"Testing rotAndtransVec "<<Mat(rotAndtransVec)<<endl;
 
+       lm_projectPoints_data_t projectPoints_t;
+
         float opts[LM_OPTS_SZ], info[LM_INFO_SZ];
         opts[0]=LM_INIT_MU; opts[1]=1E-15; opts[2]=1E-15; opts[3]=1E-20; opts[4]= LM_DIFF_DELTA;
 
         int m=6, n=numMatches*3;
 
         // Allocate working memory outside levmar for efficiency
-        float * work = new float[(LM_DIF_WORKSZ(6, n))];
-
-
+         float * work= new float[(LM_DIF_WORKSZ(m, n))];
         // par_vec stores a minimal representation of the transformation (i.e. translation + rotation) to be used in the levmar rountine.
         // This allows us to avoid the ||q||^2 = 1 constraint in the optimization and hence deal with it as an unconstrained optimization
         // problem.
-        float par_vec[6];
-        par_vec[0]=rvec.at<float>(0);
-        par_vec[1]=rvec.at<float>(1);
-        par_vec[2]=rvec.at<float>(2);
-        par_vec[3]=t.at<float>(0);
-        par_vec[4]=t.at<float>(1);
-        par_vec[5]=t.at<float>(2);
+        float p[6];
 
-        float rx=par_vec[0];
-        float ry=par_vec[1];
-        float rz=par_vec[2];
-        float tx=par_vec[3];
-        float ty=par_vec[4];
-        float tz=par_vec[5];
+        p[0]=(float)rvec.at<double>(0);
+        p[1]=(float)rvec.at<double>(1);
+        p[2]=(float)rvec.at<double>(2);
+        p[3]=(float)t.at<double>(0);
+        p[4]=(float)t.at<double>(1);
+        p[5]=(float)t.at<double>(2);
 
-        float *hx = new float[n];
+       cout<<"rotation and translation before levmar "<<"p[0] "<<p[0]<<" p[1] "<<p[1]<<" p[2] "<<p[2]<<" p[3] "<<p[3]<<"p[4] "<<p[4]<<" p[5] "<<p[5]<<endl;
 
-        float *covar;
+        float hx[n];
 
-        covar=work+LM_DIF_WORKSZ(m, n);
+        float * covar;
 
         int feature_index=0;
 
         for(int i=0; i<numMatches;++i)
         {
-            hx[feature_index*3]= (cx*tz + fx*tx + feature_world3D_1[i].y*(cx*rx - fx*rz) - feature_world3D_1[i].x*cx*ry + feature_world3D_1[i].z*fx*ry)/(tz - feature_world3D_1[i].x*ry +  feature_world3D_1[i].y*rx);
-            hx[feature_index*3 + 1]= (cy*tz + fy*ty - feature_world3D_1[i].x*(cy*ry - fy*rz) + feature_world3D_1[i].y*cy*rx -  feature_world3D_1[i].z*fy*rx)/(tz - feature_world3D_1[i].x*ry +  feature_world3D_1[i].y*rx);
+            hx[feature_index*3]= imgpts2[i].x;
+            hx[feature_index*3 + 1]= imgpts2[i].y;
             hx[feature_index*3 + 2] = 0;
             ++feature_index;
+            cout<<"Test feature_index "<<feature_index<<endl;
         }
 
-        int slevmar_return = slevmar_der(lm_projectPoints, par_vec, hx, m, n, 100, opts, info, work, covar, NULL);  // no Jacobian, caller allocates work memory, covariance estimated
+        cout<<"Test before levmar "<<endl;
+
+        int slevmar_return = slevmar_dif(lm_projectPoints, p, hx, m, n, 100, opts, info, work, covar, reinterpret_cast<void *>(&projectPoints_t));  // no Jacobian, caller allocates work memory, covariance estimated
+
+        cout<<"rotation and translation after levmar "<<"p[0] "<<p[0]<<" p[1] "<<p[1]<<" p[2] "<<p[2]<<" p[3] "<<p[3]<<"p[4] "<<p[4]<<" p[5] "<<p[5]<<endl;
+
+        delete[] work;
+
+        cout<<"Test after levmar "<<endl;
 
         if (slevmar_return == LM_ERROR)
 		std::cout << "LEVMAR Error Encountered!" << std::endl;
-
 
    /*
        ofstream fout1("feature_points.csv");
@@ -391,10 +421,9 @@ public:
     Mat depth_1, depth_2;
 
 
-    int numMatches;
+    //int numMatches;
     vector<KeyPoint> keypoints_1, keypoints_2;
 
-    vector<Point3d>  feature_world3D_1;
     vector< DMatch > matches;
 
         //camera parameters
