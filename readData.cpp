@@ -347,12 +347,10 @@ public:
 
         cout<<"rotation and translation after levmar "<<"p[0] "<<p[0]<<" p[1] "<<p[1]<<" p[2] "<<p[2]<<" p[3] "<<p[3]<<"p[4] "<<p[4]<<" p[5] "<<p[5]<<endl;
 
-        delete[] work;
-
-        cout<<"Test after levmar "<<endl;
-
         if (slevmar_return == LM_ERROR)
 		std::cout << "LEVMAR Error Encountered!" << std::endl;
+
+		delete[] work;
 
    /*
        ofstream fout1("feature_points.csv");
