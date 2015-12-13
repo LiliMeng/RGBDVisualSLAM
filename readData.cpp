@@ -115,8 +115,6 @@ public:
          assert(depth_1.type()==CV_16U);
          assert(depth_2.type()==CV_16U);
 
-     //    cv::imshow("depth 1", depth_1);
-     //    cv::waitKey(0);
     }
 
 
@@ -151,12 +149,31 @@ public:
 
          // compute homography using RANSAC
         cv::Mat mask;
-        int ransacThreshold=5;
+        int ransacThreshold=9;
+
+        vector<Point2d> imgpts1beforeRANSAC, imgpts2beforeRANSAC;
+
+        for( int i = 0; i < (int)matches.size(); i++ )
+        {
+            imgpts1beforeRANSAC.push_back(keypoints_1[matches[i].queryIdx].pt);
+            imgpts2beforeRANSAC.push_back(keypoints_2[matches[i].trainIdx].pt);
+        }
+
         cv::Mat H12 = cv::findHomography(imgpts1beforeRANSAC, imgpts2beforeRANSAC, CV_RANSAC, ransacThreshold, mask);
 
         int numMatchesbeforeRANSAC=(int)matches.size();
-        cout<<"The number matches before RANSAC"<<numMatchesbeforeRANSAC<<endl;
+        cout<<"The number of matches before RANSAC"<<numMatchesbeforeRANSAC<<endl;
 
+        int numRANSACInlier=0;
+        for(int i=0; i<(int)matches.size(); i++)
+        {
+            if((int)mask.at<uchar>(i, 0) == 1)
+            {
+                numRANSACInlier+=1;
+            }
+        }
+
+        cout<<"The number of matches after RANSAC"<<numRANSACInlier<<endl;
 
         double max_dist = 0; double min_dist = 100;
 
