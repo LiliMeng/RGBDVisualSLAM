@@ -76,6 +76,28 @@ typedef struct lm_projectPoints_data_s
     return;
 }
 
+static
+void cvDepth2Cloud(const Mat& depth, Mat& cloud, const Mat& cameraMatrix)
+{
+    const float inv_fx = 1.f/cameraMatrix.at<float>(0,0);
+    const float inv_fy = 1.f/cameraMatrix.at<float>(1,1);
+    const float ox = cameraMatrix.at<float>(0,2);
+    const float oy = cameraMatrix.at<float>(1,2);
+    cloud.create(depth.size(), CV_32FC3);
+    for(int y=0; y<cloud.rows; y++)
+    {
+        Point3f* cloud_ptr = (Point3f*)cloud.ptr(y);
+        const float* depth_prt = (const float*) depth.ptr(y);
+        for(int x=0; x<cloud.cols; x++)
+        {
+            float z =depth_prt[x];
+            cloud_ptr[x].x = (x-ox)*z*inv_fx;
+            cloud_ptr[x].y = (y-oy)*z*inv_fy;
+            cloud_ptr[x].z = z;
+        }
+    }
+}
+
 
 
 class readData{
@@ -96,6 +118,8 @@ public:
      //    cv::imshow("depth 1", depth_1);
      //    cv::waitKey(0);
     }
+
+
 
     void featureMatching()
     {
@@ -122,7 +146,17 @@ public:
         //-- Step 3: Matching descriptor vectors using FLANN matcher
         FlannBasedMatcher matcher;
         std::vector< DMatch > matches;
+
         matcher.match( descriptors_1, descriptors_2, matches );
+
+         // compute homography using RANSAC
+        cv::Mat mask;
+        int ransacThreshold=5;
+        cv::Mat H12 = cv::findHomography(imgpts1beforeRANSAC, imgpts2beforeRANSAC, CV_RANSAC, ransacThreshold, mask);
+
+        int numMatchesbeforeRANSAC=(int)matches.size();
+        cout<<"The number matches before RANSAC"<<numMatchesbeforeRANSAC<<endl;
+
 
         double max_dist = 0; double min_dist = 100;
 
@@ -143,20 +177,12 @@ public:
         //-- PS.- radiusMatch can also be used here.
         std::vector< DMatch > good_matches;
 
-        for( int i = 0; i < descriptors_1.rows; i++ )
+        for( int i = 0; i < descriptors_1.rows; i++)
         {
-          if( matches[i].distance <= max(2*min_dist, 0.02) )
-            { good_matches.push_back( matches[i]); }
+          if( matches[i].distance <= max(2*min_dist, 0.02)&& (int)mask.at<uchar>(i, 0) == 1)  //consider RANSAC
+            { good_matches.push_back(matches[i]); }
         }
 
-        //-- Draw only "good" matches
-        Mat img_matches;
-        drawMatches( img_1, keypoints_1, img_2, keypoints_2,
-               good_matches, img_matches, Scalar::all(-1), Scalar::all(-1),
-               vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
-
-        //-- Show detected matches
-        imshow( "Good Matches", img_matches);
 
         vector<int> matchedKeypointsIndex1, matchedKeypointsIndex2;
 
@@ -169,9 +195,10 @@ public:
             matchedKeypointsIndex2.push_back(good_matches[i].trainIdx);
             imgpts1.push_back(keypoints_1[good_matches[i].queryIdx].pt);
             imgpts2.push_back(keypoints_2[good_matches[i].trainIdx].pt);
+            cout<<"imgpts1[i].x "<<imgpts1[i].x<<" imgpts1[i].y "<<imgpts1[i].y<<endl;
+            cout<<"imgpts2[i].x "<<imgpts2[i].x<<" imgpts2[i].y "<<imgpts2[i].y<<endl;
         }
 
-        int numMatches=(int)good_matches.size();
         //Find the fundamental matrix
 
         Mat F = findFundamentalMat(imgpts1, imgpts2, FM_RANSAC, 3, 0.99);
@@ -205,7 +232,8 @@ public:
 
         cout<<"Testing E" <<endl<<Mat(E)<<endl;
 
-        //decompose E to P' Hz(9.19)
+        //decompose E to P' Hz(9.19)fter levmar p[0] 1.29206 p[1] -0.0624575 p[2] 2.86291 p[3] 0.287908p[4] -0.147458 p[5] -0.946237
+
         SVD svd(E,SVD::MODIFY_A);
         Mat svd_u = svd.u;
         Mat svd_vt = svd.vt;
@@ -237,6 +265,7 @@ public:
             {
                worldZ1=depthValue1/factor;
             }
+
 
             double worldX1=(keypoints_1[matchedKeypointsIndex1[i]].pt.x-cx)*worldZ1/fx;
             double worldY1=(keypoints_1[matchedKeypointsIndex1[i]].pt.y-cy)*worldZ1/fy;
@@ -270,7 +299,8 @@ public:
         distCoeffs.at<double>(1) = 0;
         distCoeffs.at<double>(2) = 0;
         distCoeffs.at<double>(3) = 0;
-        /*calculate the estimatedProjectedPoints2 through feature_world3D_1, rvec, t, K, distCoeffs
+
+        //calculate the estimatedProjectedPoints2 through feature_world3D_1, rvec, t, K, distCoeffs
        std::vector<cv::Point2d> estimatedProjectedPoints2;
        cv::projectPoints(feature_world3D_1, rvec, t, K, distCoeffs, estimatedProjectedPoints2);
 
@@ -280,7 +310,7 @@ public:
 
         for(int i = 0; i < (int)good_matches.size(); ++i)
         {
-            std::cout << "feature points from image1 in world coordinate " <<feature_world3D_1[i]<< " re-projected to image2 in image coordinate" << estimatedProjectedPoints2[i] << std::endl;
+            std::cout <<matchedKeypointsIndex1[i]<<" feature points from image1 in world coordinate " <<feature_world3D_1[i]<< " re-projected to image2 in image coordinate" << estimatedProjectedPoints2[i] << std::endl;
             //for image1, camera coordinate is the same with world coordinate
             err = norm(Mat(imgpts2[i]), Mat(estimatedProjectedPoints2[i]), CV_L2);              // reprojection error for measured points and estimatedReprojected points in image2
 
@@ -288,10 +318,9 @@ public:
             totalErr  += err*err;                // sum it up
         }
 
-
+       int numMatches=(int)good_matches.size();
         double meanPerPointError=std::sqrt(totalErr/numMatches);    //calculate the arithmmatical mean
         cout<<"meanPerPointError: "<<meanPerPointError<<endl;
-　　　　　　　　*/
        cv::Mat rotAndtransVec(6,1,cv::DataType<double>::type);
 
        rotAndtransVec.at<double>(0)=rvec.at<double>(0);
@@ -315,6 +344,7 @@ public:
         // par_vec stores a minimal representation of the transformation (i.e. translation + rotation) to be used in the levmar rountine.
         // This allows us to avoid the ||q||^2 = 1 constraint in the optimization and hence deal with it as an unconstrained optimization
         // problem.
+
         float p[6];
 
         p[0]=(float)rvec.at<double>(0);
@@ -431,8 +461,8 @@ public:
     double cx = 319.5; //optical centre x
     double cy = 239.5; //optical centre y
 
-    double min_dis = 800;
-    double max_dis = 35000;
+    double min_dis = 500;
+    double max_dis = 50000;
 
     double X1, Y1, Z1, X2, Y2, Z2;
     double factor = 5000;
@@ -457,10 +487,10 @@ int main()
 {
     readData r;
 
-    string rgb1="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/rgb3.png";
-    string depth1="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/depth3.png";
-    string rgb2="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/rgb4.png";
-    string depth2="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/depth4.png";
+    string rgb1="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/image_00000.png";
+    string depth1="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/depth_00000.png";
+    string rgb2="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/image_00002.png";
+    string depth2="/home/lili/workspace/rgbd_dataset_freiburg2_large_with_loop/MotionEstimation/FeatureMatching/depth_00002.png";
 
     r.testing(rgb1,depth1,rgb2,depth2);
 
